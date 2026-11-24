@@ -4,9 +4,23 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 
 from auth import AuthHeader, require_user
-from validators import validate_bl_match
+from validators import calibration_expired, validate_bl_match
 
 router = APIRouter(tags=["reconcile"])
+
+
+def _active_ticket_rows(conn, bl_code: str):
+    """对账口径：作废票与校准失效地磅的票一律不累计（甲路径正式册零增的对账侧闸）。"""
+    return conn.execute(
+        """SELECT t.ticket_code, t.gross_t, t.status, t.generation,
+                  b.bridge_code, b.calibration_status, b.calibration_due
+           FROM weigh_tickets t
+           JOIN weigh_lanes l ON l.id=t.lane_id
+           JOIN weigh_bridges b ON b.id=l.bridge_id
+           WHERE t.bl_ref=? AND t.status NOT IN ('作废')
+           ORDER BY t.id""",
+        (bl_code,),
+    ).fetchall()
 
 
 @router.get("/api/reconcile")
@@ -42,19 +56,21 @@ def _reconcile_bl(conn, bl_code: str) -> dict:
     bl = conn.execute(
         "SELECT * FROM bl_manifests WHERE bl_code=?", (bl_code,)
     ).fetchone()
-    tickets = conn.execute(
-        """SELECT ticket_code, gross_t, status, generation FROM weigh_tickets
-           WHERE bl_ref=? AND status NOT IN ('作废')""",
-        (bl_code,),
-    ).fetchall()
+    raw = _active_ticket_rows(conn, bl_code)
+    expired_rows = [r for r in raw if calibration_expired(dict(r))]
+    tickets = [r for r in raw if not calibration_expired(dict(r))]
     if not tickets:
         return {
             "bl_code": bl_code,
             "declared_gross_t": bl["declared_gross_t"],
             "ticket_sum_t": 0,
             "balanced": False,
-            "reason": "无过磅票",
+            "reason": "无过磅票" if not raw else "有效过磅票为零（含校准过期禁入）",
             "tickets": [],
+            "expired_excluded": [
+                {"ticket_code": r["ticket_code"], "bridge_code": r["bridge_code"]}
+                for r in expired_rows
+            ],
         }
     ticket_sum = round(sum(float(t["gross_t"]) for t in tickets), 3)
     declared = float(bl["declared_gross_t"])
@@ -75,6 +91,10 @@ def _reconcile_bl(conn, bl_code: str) -> dict:
         "seal_count": len(seal_rows),
         "tickets": [dict(t) for t in tickets],
         "seals": [dict(s) for s in seal_rows],
+        "expired_excluded": [
+            {"ticket_code": r["ticket_code"], "bridge_code": r["bridge_code"]}
+            for r in expired_rows
+        ],
     }
 
 

@@ -14,6 +14,12 @@ export const reconcileViewTemplate = `
       <p>申报 {{ reconOne.declared_gross_t }}t · 过磅合计 {{ reconOne.ticket_sum_t }}t</p>
       <p :class="reconOne.balanced ? 'ok' : 'bad'">{{ reconOne.balanced ? '账实平衡' : '偏差待查' }}</p>
       <p>快照数 {{ reconOne.seal_count }} · 可出证明 {{ reconOne.proof_ready ? '是' : '否' }}</p>
+      <p v-if="reconOne.expired_excluded && reconOne.expired_excluded.length" class="recon-warn">
+        校准过期禁入（毛重不累计）：
+        <span v-for="(x,i) in reconOne.expired_excluded" :key="i">
+          {{ x.ticket_code }}@{{ x.bridge_code }}&ensp;
+        </span>
+      </p>
     </div>
     <ul v-if="reconAllItems.length">
       <li v-for="r in reconAllItems" :key="r.bl_code">{{ r.bl_code }} · {{ r.balanced ? '平' : '偏' }}</li>

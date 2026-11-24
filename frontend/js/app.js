@@ -10,6 +10,7 @@ import { blViewTemplate } from "./views/bl_view.js";
 import { lineageViewTemplate } from "./views/lineage_view.js";
 import { reconcileViewTemplate } from "./views/reconcile_view.js";
 import { stubsViewTemplate } from "./views/stubs_view.js";
+import { fatesViewTemplate } from "./views/fates_view.js";
 
 const { createApp, ref, computed, watch, onMounted } = Vue;
 
@@ -23,7 +24,7 @@ createApp({
     const actionErr = ref("");
     const actionOk = ref("");
     const tab = ref(0);
-    const nav = ["总览","地磅","车道","过磅","超重","放行","快照","提单","血缘","对账","空桩"];
+    const nav = ["总览","地磅","车道","过磅","超重","放行","快照","提单","血缘","对账","命运册","空桩"];
 
     const dash = ref({});
     const bridges = ref([]);
@@ -36,6 +37,7 @@ createApp({
     const lineageEdges = ref([]);
     const customsJobs = ref([]);
     const craneJobs = ref([]);
+    const expiredFates = ref([]);
     const bridgeDetail = ref(null);
     const ticketDetail = ref(null);
     const reconOne = ref(null);
@@ -126,10 +128,10 @@ createApp({
       if (!token.value) return;
       clearFlash();
       try {
-        const [d, br, ln, tk, ov, gr, sl, bl, lg, cj, cj2] = await Promise.all([
+        const [d, br, ln, tk, ov, gr, sl, bl, lg, cj, cj2, ft] = await Promise.all([
           api.dashboard(), api.bridges(), api.lanes(), api.tickets(), api.overloads(),
           api.gateReleases(), api.seals(), api.blList(), api.lineage(),
-          api.customsJobs(), api.craneJobs(),
+          api.customsJobs(), api.craneJobs(), api.expiredFates(),
         ]);
         dash.value = d || {};
         bridges.value = br.items || [];
@@ -142,6 +144,7 @@ createApp({
         lineageEdges.value = lg.items || [];
         customsJobs.value = cj.items || [];
         craneJobs.value = cj2.items || [];
+        expiredFates.value = ft.items || [];
         if (bridges.value.length) {
           laneForm.value.bridge_id = laneForm.value.bridge_id || bridges.value[0].id;
         }
@@ -262,7 +265,7 @@ createApp({
     return {
       token, user, username, password, err, actionErr, actionOk, tab, nav,
       dash, bridges, lanes, tickets, overloads, gateReleases, seals, blList,
-      lineageEdges, customsJobs, craneJobs, bridgeDetail, ticketDetail,
+      lineageEdges, customsJobs, craneJobs, expiredFates, bridgeDetail, ticketDetail,
       reconOne, reconAllItems, proofOne, reconCode, proofCode,
       bridgeForm, laneForm, ticketForm, overloadOpenForm, gateForm, sealForm,
       blForm, lineageForm, customsForm, craneForm,
@@ -320,7 +323,8 @@ createApp({
         <div v-show="tab===7">${blViewTemplate}</div>
         <div v-show="tab===8">${lineageViewTemplate}</div>
         <div v-show="tab===9">${reconcileViewTemplate}</div>
-        <div v-show="tab===10">${stubsViewTemplate}</div>
+        <div v-show="tab===10">${fatesViewTemplate}</div>
+        <div v-show="tab===11">${stubsViewTemplate}</div>
       </main>
     </div>
   `,

@@ -14,6 +14,7 @@ from bridges_svc import router as bridges_router
 from crane_plan_svc import router as crane_router
 from customs_stub_svc import router as customs_router
 from db import FRONTEND, PRODUCT_META, init_db
+from expired_fate_svc import router as expired_fate_router
 from gate_svc import router as gate_router
 from lanes_svc import router as lanes_router
 from locks import router as locks_router
@@ -49,6 +50,7 @@ for r in (
     audit_router,
     customs_router,
     crane_router,
+    expired_fate_router,
 ):
     app.include_router(r)
 

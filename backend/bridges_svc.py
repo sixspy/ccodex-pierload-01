@@ -6,8 +6,19 @@ from fastapi import APIRouter, HTTPException
 from auth import AuthHeader, require_user, require_writer
 from db import connect, now_iso, write_audit
 from models import BridgeIn
+from validators import calibration_expired
 
 router = APIRouter(tags=["bridges"])
+
+
+def _bridge_view(row) -> dict:
+    d = dict(row)
+    d["calibration_expired"] = calibration_expired(d)
+    if d["calibration_expired"]:
+        d["calibration_status"] = "校准过期"
+    elif not d.get("calibration_status") or d["calibration_status"] == "未登记":
+        d["calibration_status"] = "校准有效" if d.get("calibration_due") else "未登记"
+    return d
 
 
 @router.get("/api/bridges")
@@ -17,7 +28,7 @@ def list_bridges(authorization: AuthHeader = None):
         rows = conn.execute(
             "SELECT * FROM weigh_bridges ORDER BY id"
         ).fetchall()
-        return {"items": [dict(r) for r in rows]}
+        return {"items": [_bridge_view(r) for r in rows]}
 
 
 @router.get("/api/bridges/{bridge_id}")
@@ -40,7 +51,7 @@ def get_bridge(bridge_id: int, authorization: AuthHeader = None):
             (bridge_id,),
         ).fetchone()
         return {
-            "bridge": dict(row),
+            "bridge": _bridge_view(row),
             "lanes": [dict(x) for x in lanes],
             "active_tickets": stats["active"],
         }

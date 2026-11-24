@@ -6,8 +6,19 @@ from fastapi import APIRouter, HTTPException
 from auth import AuthHeader, require_user, require_writer
 from db import connect, now_iso, write_audit
 from models import LaneIn
+from validators import calibration_expired
 
 router = APIRouter(tags=["lanes"])
+
+
+def _lane_view(row) -> dict:
+    d = dict(row)
+    d["bridge_calibration_expired"] = calibration_expired(d)
+    d["bridge_calibration_status"] = (
+        "校准过期" if d["bridge_calibration_expired"]
+        else (d.get("calibration_status") or "未登记")
+    )
+    return d
 
 
 @router.get("/api/lanes")
@@ -16,18 +27,22 @@ def list_lanes(authorization: AuthHeader = None, bridge_id: int | None = None):
     with connect() as conn:
         if bridge_id:
             rows = conn.execute(
-                """SELECT l.*, b.bridge_code, b.name bridge_name FROM weigh_lanes l
+                """SELECT l.*, b.bridge_code, b.name bridge_name,
+                          b.calibration_status, b.calibration_due
+                   FROM weigh_lanes l
                    JOIN weigh_bridges b ON b.id=l.bridge_id
                    WHERE l.bridge_id=? ORDER BY l.lane_code""",
                 (bridge_id,),
             ).fetchall()
         else:
             rows = conn.execute(
-                """SELECT l.*, b.bridge_code, b.name bridge_name FROM weigh_lanes l
+                """SELECT l.*, b.bridge_code, b.name bridge_name,
+                          b.calibration_status, b.calibration_due
+                   FROM weigh_lanes l
                    JOIN weigh_bridges b ON b.id=l.bridge_id
                    ORDER BY l.lane_code"""
             ).fetchall()
-        return {"items": [dict(r) for r in rows]}
+        return {"items": [_lane_view(r) for r in rows]}
 
 
 @router.get("/api/lanes/{lane_id}")
@@ -35,7 +50,8 @@ def get_lane(lane_id: int, authorization: AuthHeader = None):
     require_user(authorization)
     with connect() as conn:
         row = conn.execute(
-            """SELECT l.*, b.bridge_code, b.max_gross_t, b.axle_limit
+            """SELECT l.*, b.bridge_code, b.max_gross_t, b.axle_limit,
+                      b.calibration_status, b.calibration_due
                FROM weigh_lanes l JOIN weigh_bridges b ON b.id=l.bridge_id
                WHERE l.id=?""",
             (lane_id,),
@@ -47,7 +63,10 @@ def get_lane(lane_id: int, authorization: AuthHeader = None):
                WHERE lane_id=? ORDER BY id DESC LIMIT 8""",
             (lane_id,),
         ).fetchall()
-        return {"lane": dict(row), "recent_tickets": [dict(t) for t in tickets]}
+        return {
+            "lane": _lane_view(row),
+            "recent_tickets": [dict(t) for t in tickets],
+        }
 
 
 @router.post("/api/lanes")

@@ -18,7 +18,7 @@ export const lanesViewTemplate = `
     <button class="secondary" @click="refresh">刷新</button>
   </div>
   <table class="data-table">
-    <thead><tr><th>车道</th><th>地磅</th><th>方向</th><th>阈值</th><th>旁路</th><th>状态</th></tr></thead>
+    <thead><tr><th>车道</th><th>地磅</th><th>方向</th><th>阈值</th><th>旁路</th><th>地磅校准</th><th>状态</th></tr></thead>
     <tbody>
       <tr v-for="l in lanes" :key="l.id">
         <td>{{ l.lane_code }}</td>
@@ -26,7 +26,12 @@ export const lanesViewTemplate = `
         <td>{{ l.direction }}</td>
         <td>{{ l.overload_threshold_t }}t</td>
         <td>{{ l.side_lane_ref || '—' }}</td>
-        <td><span class="badge pass">{{ l.status }}</span></td>
+        <td>
+          <span class="badge" :class="l.bridge_calibration_expired ? 'fail' : 'pass'">
+            {{ l.bridge_calibration_expired ? '● 校准过期禁入' : '● 有效' }}
+          </span>
+        </td>
+        <td><span class="badge" :class="l.bridge_calibration_expired ? 'warn' : 'pass'">{{ l.status }}</span></td>
       </tr>
     </tbody>
   </table>

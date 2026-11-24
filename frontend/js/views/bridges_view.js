@@ -14,7 +14,7 @@ export const bridgesViewTemplate = `
     <button class="secondary" @click="refresh">刷新</button>
   </div>
   <table class="data-table">
-    <thead><tr><th>编码</th><th>港区</th><th>名称</th><th>额定量程</th><th>轴限</th><th>状态</th><th></th></tr></thead>
+    <thead><tr><th>编码</th><th>港区</th><th>名称</th><th>额定量程</th><th>轴限</th><th>校准截止</th><th>校准态</th><th>状态</th><th></th></tr></thead>
     <tbody>
       <tr v-for="b in bridges" :key="b.id">
         <td>{{ b.bridge_code }}</td>
@@ -22,6 +22,12 @@ export const bridgesViewTemplate = `
         <td>{{ b.name }}</td>
         <td>{{ b.max_gross_t }}t</td>
         <td>{{ b.axle_limit }}</td>
+        <td class="mono">{{ b.calibration_due || '—' }}</td>
+        <td>
+          <span class="badge" :class="b.calibration_expired ? 'fail' : 'pass'">
+            {{ b.calibration_expired ? '● 校准过期（禁入）' : '● ' + (b.calibration_status || '未登记') }}
+          </span>
+        </td>
         <td><span class="badge" :class="b.status==='运行'?'pass':'warn'">{{ b.status }}</span></td>
         <td><button class="mini-btn" @click="loadBridgeDetail(b.id)">车道</button></td>
       </tr>

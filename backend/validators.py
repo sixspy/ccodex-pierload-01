@@ -1,7 +1,30 @@
 """过磅与闸口校验。"""
 from __future__ import annotations
 
+from datetime import date
+
 from fastapi import HTTPException
+
+
+def calibration_expired(bridge: dict) -> bool:
+    """校准过期唯一判定口径：状态标记与截止日双证，任一命中即失效。"""
+    if bridge.get("calibration_status") == "校准过期":
+        return True
+    due = bridge.get("calibration_due")
+    if due:
+        try:
+            return date.fromisoformat(str(due)[:10]) < date.today()
+        except ValueError:
+            return False
+    return False
+
+
+def validate_bridge_calibrated(bridge: dict) -> None:
+    if calibration_expired(bridge):
+        raise HTTPException(
+            409,
+            f"地磅{bridge.get('bridge_code', '')}校准已过期，禁入正式册（整笔拒收）",
+        )
 
 
 def validate_lane_open(lane: dict) -> None:

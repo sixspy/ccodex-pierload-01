@@ -147,6 +147,8 @@ textarea { min-height: 80px; font-family: var(--font-mono); font-size: 12px; }
 }
 .hero-card .t { font-size: 11px; color: var(--text-dim); }
 .hero-card .n { font-size: 26px; color: var(--amber); font-family: var(--font-mono); }
+.hero-card.hero-alert { border-color: var(--bad); background: rgba(231, 111, 81, 0.12); }
+.hero-card .n.n-bad { color: var(--bad); }
 input:focus, select:focus, textarea:focus {
   outline: 1px solid var(--amber); outline-offset: 1px;
 }

@@ -26,6 +26,7 @@ PRODUCT_META = {
         "reconcile",
         "locks",
         "audit",
+        "expired_fates",
     ],
     "stubs": ["customs_stub", "crane_plan"],
 }
@@ -36,6 +37,9 @@ def connect() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys=ON")
+    # 并发过磅写口：WAL 允许读写并发，配合进程内键锁串行化同磅抢建
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=30000")
     return conn
 
 
@@ -65,6 +69,8 @@ CREATE TABLE IF NOT EXISTS weigh_bridges(
   max_gross_t REAL NOT NULL,
   axle_limit INTEGER NOT NULL DEFAULT 6,
   status TEXT NOT NULL,
+  calibration_due TEXT,
+  calibration_status TEXT NOT NULL DEFAULT '未登记',
   created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS weigh_lanes(
@@ -147,6 +153,21 @@ CREATE TABLE IF NOT EXISTS pier_locks(
   lock_key TEXT PRIMARY KEY,
   holder TEXT NOT NULL,
   acquired_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS expired_ticket_fates(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  shift_key TEXT NOT NULL,
+  bridge_code TEXT NOT NULL,
+  lane_code TEXT NOT NULL,
+  ticket_code TEXT NOT NULL,
+  bl_ref TEXT NOT NULL,
+  gross_t REAL,
+  decision TEXT NOT NULL,
+  path_taken TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  actor TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  UNIQUE(shift_key, bridge_code, ticket_code)
 );
 CREATE TABLE IF NOT EXISTS contention_log(
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -231,7 +252,8 @@ def seed_bridges(conn: sqlite3.Connection) -> None:
             continue
         conn.execute(
             """INSERT INTO weigh_bridges(bridge_code,pier_zone,name,max_gross_t,
-               axle_limit,status,created_at) VALUES (?,?,?,?,?,?,?)""",
+               axle_limit,status,calibration_due,calibration_status,created_at)
+               VALUES (?,?,?,?,?,?,?,?,?)""",
             (
                 row["bridge_code"],
                 row["pier_zone"],
@@ -239,6 +261,8 @@ def seed_bridges(conn: sqlite3.Connection) -> None:
                 float(row["max_gross_t"]),
                 int(row.get("axle_limit", 6)),
                 row.get("status", "运行"),
+                row.get("calibration_due"),
+                row.get("calibration_status", "未登记"),
                 row.get("created_at", now_iso()),
             ),
         )
@@ -436,9 +460,22 @@ def seed_lineage_samples(conn: sqlite3.Connection) -> None:
         )
 
 
+def _migrate(conn: sqlite3.Connection) -> None:
+    """旧库补列：校准截止日与校准态（鉴权与库文件路径保持原样）。"""
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(weigh_bridges)")}
+    if "calibration_due" not in cols:
+        conn.execute("ALTER TABLE weigh_bridges ADD COLUMN calibration_due TEXT")
+    if "calibration_status" not in cols:
+        conn.execute(
+            "ALTER TABLE weigh_bridges ADD COLUMN calibration_status TEXT "
+            "NOT NULL DEFAULT '未登记'"
+        )
+
+
 def init_db() -> None:
     with connect() as conn:
         conn.executescript(SCHEMA)
+        _migrate(conn)
         seed_users(conn)
         seed_bridges(conn)
         seed_lanes(conn)
@@ -477,6 +514,12 @@ def dashboard_stats(conn: sqlite3.Connection) -> dict:
         """SELECT COUNT(*) c FROM weigh_tickets
            WHERE status='旁路挂起'"""
     ).fetchone()["c"]
+    expired_bridges = conn.execute(
+        "SELECT COUNT(*) c FROM weigh_bridges WHERE calibration_status='校准过期'"
+    ).fetchone()["c"]
+    expired_fate_rejections = conn.execute(
+        "SELECT COUNT(*) c FROM expired_ticket_fates WHERE decision='拒收'"
+    ).fetchone()["c"]
     return {
         "bridges": bridges,
         "lanes": lanes,
@@ -486,6 +529,8 @@ def dashboard_stats(conn: sqlite3.Connection) -> dict:
         "gate_seals": sealed,
         "bl_manifests": bl_count,
         "side_pending": pending,
+        "expired_bridges": expired_bridges,
+        "expired_fate_rejections": expired_fate_rejections,
         "stubs": stubs,
         "meta": PRODUCT_META,
     }
